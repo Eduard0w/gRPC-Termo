@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+
+option java_multiple_files = true; // Cria uma classe Java para cada message
+option java_package = "com.seuprojeto.termo.grpc"; // A pasta onde o Maven vai gerar os arquivos
+
+service Termo {
+    // O jogador entra no site e pede pra jogar
+    rpc Conectar (JogadorRequest) returns (LobbyResponse);
+
+    // O jogador chuta uma palavra (retorna as cores)
+    rpc EnviarPalavra (TentativaRequest) returns (TentativaResponse);
+
+    // Server Streaming
+    // Cliente fica escutando esse canal pra saber se o oponente ganhou
+    rpc MonitorarPartida (PartidaRequest) returns (stream EventoPartida);
+    // O "stream" nesse método avisa ao compilador que esse método não responde apenas uma vez, ou seja
+    // fica aberto mandando dados continuamente
+}
+
+
+// DTOs
+
+message JogadorRequest {
+    string nome = 1;
+}
+
+message LobbyResponse {
+    string id_jogador1 = 1;
+    string id_partida = 2;
+    string nome_oponente = 3;
+    // Esse valores que são definifidos (1, 2, 3) são identificadores.
+    // É usado para o gRPC saber quem é quem no outro lado
+}
+
+message TentativaRequest {
+    string id_jogador1 = 1;
+    string id_partida = 2;
+    string palavra_chutada = 3;
+}
+
+message TentativaResponse {
+    //O repeated define um array
+    repeated int32 cores = 1;   // Array de cores (Ex: 0=Cinza, 1=Amarelo, 2=Verde)
+    bool acertou = 2;
+    int32 tentativas_restantes = 3;
+}
+
+
+message PartidaRequest {
+    string id_jogador = 1;
+    string id_partida = 2;
+}
+
+message EventoPartida {
+    bool oponente_ganhou = 1;
+    string mensagem = 2;
+}
