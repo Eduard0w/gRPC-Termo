@@ -1,12 +1,11 @@
 package service;
 
-import java.com.grpc.termo.grpc.*;
+import com.seuprojeto.termo.grpc.*;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import com.seuprojeto.termo.grpc.TermoGrpc;
-
 import core.GameEngine;
 import core.Partida;
 import io.grpc.stub.StreamObserver;
