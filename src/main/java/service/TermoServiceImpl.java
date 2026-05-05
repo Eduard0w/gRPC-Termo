@@ -5,13 +5,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentHashMap;
-import com.seuprojeto.termo.grpc.TermoGrpc;
+
 import core.GameEngine;
 import core.Partida;
 import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
 
-@RequiredArgsConstructor
 public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
     private final GameEngine engine;
     private final Map<String, Partida> partidas = new ConcurrentHashMap<>();
@@ -21,6 +20,11 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
     private String jogadorEsperandoId = null;
     private String jogadorEsperandoNome = null;
     private StreamObserver<LobbyResponse> jogadorEsperandoObserver = null;
+
+    public TermoServiceImpl() {
+        this.engine = new GameEngine();
+        this.engine.pegarPalavrasDisponiveis();
+    }
 
     @Override
     public void conectar(JogadorRequest request,
