@@ -113,11 +113,11 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         responseObserver.onNext(builder.build());
         responseObserver.onCompleted();
 
-        if (acertou) {
-            notificarOponentes(idPartida, true, "Seu oponente adivinhou a palavra! Voce perdeu.");
-        } else if (resultado.equals("DERROTA")) {
-            notificarOponentes(idPartida, false, "Seu oponente ficou sem tentativas! Continue jogando.");
-        }
+//        if (acertou) {
+//            notificarOponentes(idPartida, true, "Seu oponente adivinhou a palavra! Voce perdeu.");
+//        } else if (resultado.equals("DERROTA")) {
+//            notificarOponentes(idPartida, false, "Seu oponente ficou sem tentativas! Continue jogando.");
+//        }
     }
 
     @Override
