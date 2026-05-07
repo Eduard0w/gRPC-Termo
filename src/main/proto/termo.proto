@@ -1,7 +1,5 @@
 syntax = "proto3";
 
-option java_multiple_files = true;
-
 option java_multiple_files = true; // Cria uma classe Java para cada message
 option java_package = "com.seuprojeto.termo.grpc"; // A pasta onde o Maven vai gerar os arquivos
 
