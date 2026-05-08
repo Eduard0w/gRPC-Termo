@@ -1,3 +1,4 @@
+import interceptor.AuthInterceptor;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import service.TermoServiceImpl;
@@ -7,6 +8,7 @@ public class Main {
         Server servidor = ServerBuilder
                 .forPort(50051)
                 .addService(new TermoServiceImpl())
+                .intercept(new AuthInterceptor())
                 .build();
         servidor.start();
         System.out.println("Servidor iniciado na porta 50051");
