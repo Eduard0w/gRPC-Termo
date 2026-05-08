@@ -41,7 +41,7 @@ public class Partida {
         }
 
         if (!engine.validarPalavraChutada(chute)) {
-            return "Palavra não valida";
+            return "Palavra inválida.";
         }
 
         int[] cores = engine.avaliarCores(palavraSecreta, chute);
