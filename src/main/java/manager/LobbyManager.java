@@ -26,7 +26,15 @@ public class LobbyManager {
                 jogadorEsperandoNome = nomeJogador;
                 jogadorEsperandoObserver = responseObserver;
                 return null;
+
             } else {
+                if (jogadorEsperandoId.equals(idJogador)) {
+                    responseObserver.onError(io.grpc.Status.ALREADY_EXISTS
+                            .withDescription("Voce ja esta na fila de espera.")
+                            .asRuntimeException());
+                    return null;
+                }
+
                 String idPartida = gerarId();
                 String idJogador1 = jogadorEsperandoId;
                 String idJogador2 = idJogador;
@@ -38,6 +46,12 @@ public class LobbyManager {
                         .setIdJogador1(idJogador1)
                         .setIdPartida(idPartida)
                         .setNomeOponente(nomeJogador)
+                        .build());
+                jogadorEsperandoObserver.onCompleted();
+
+                responseObserver.onNext(LobbyResponse.newBuilder()
+                        .setIdJogador1(idJogador2)
+                        .setIdPartida(idPartida)
                         .setNomeOponente(jogadorEsperandoNome)
                         .build());
                 responseObserver.onCompleted();
