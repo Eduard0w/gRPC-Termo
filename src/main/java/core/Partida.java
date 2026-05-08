@@ -2,6 +2,7 @@ package core;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import lombok.Getter;
 
@@ -14,11 +15,13 @@ public class Partida {
     private int tentativasRestantes;
     private boolean finalizada;
     private boolean venceu;
+    private String id_jogador1;
+    private String id_jogador2;
 
     private List<String> historicoChutes;
     private List<int[]> historicoCores;
 
-    public Partida(GameEngine engine) {
+    public Partida(GameEngine engine, String id_jogador1, String id_jogador2) {
         this.engine = engine;
         this.palavraSecreta = engine.palavraSorteada();
         this.tentativasRestantes = 6;
@@ -26,6 +29,8 @@ public class Partida {
         this.venceu = false;
         this.historicoChutes = new ArrayList<>();
         this.historicoCores = new ArrayList<>();
+        this.id_jogador1 = id_jogador1;
+        this.id_jogador2 = id_jogador2;
 
         System.out.println("Palavra sorteada: " + this.palavraSecreta);
     }
@@ -41,12 +46,12 @@ public class Partida {
 
         int[] cores = engine.avaliarCores(palavraSecreta, chute);
 
-        // 3. Salva no histórico e diminui as tentativas
+        // Salva no histórico e diminui as tentativas
         historicoChutes.add(chute);
         historicoCores.add(cores);
         tentativasRestantes--;
 
-        // 4. Verifica condição de vitória ou derrota
+        // Verifica condição de vitória ou derrota
         if (chute.equals(palavraSecreta)) {
             venceu = true;
             finalizada = true;
@@ -58,5 +63,12 @@ public class Partida {
 
         return "CONTINUA";
     }
-    }
 
+    public boolean PertenceAPartida(String id_jogador) {
+        if(!Objects.equals(id_jogador, this.id_jogador1) && !Objects.equals(id_jogador, this.id_jogador2)){
+            System.out.println("Esse jogador não pertence a partida");
+            return false;
+        }
+
+        return true;
+    }
