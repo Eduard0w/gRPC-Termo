@@ -54,7 +54,7 @@ public class GameEngine {
         return palavrasPossiveis.get(indice);
     }
 
-    int[] avaliarCores(String palavraSorteada, String palavraChute) {
+    public int[] avaliarCores(String palavraSorteada, String palavraChute) {
         int[] resultado = new int[5];
         int[] mapaFrequencia = new int[26];
         /*
