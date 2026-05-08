@@ -36,11 +36,11 @@ public class Partida {
     }
 
     public String jogada(String chute) {
-        if(finalizada) {
+        if (finalizada) {
             return "Jogo acabou!";
         }
 
-        if(!engine.validarPalavraChutada(chute)){
+        if (!engine.validarPalavraChutada(chute)) {
             return "Palavra não valida";
         }
 
@@ -65,10 +65,11 @@ public class Partida {
     }
 
     public boolean PertenceAPartida(String id_jogador) {
-        if(!Objects.equals(id_jogador, this.id_jogador1) && !Objects.equals(id_jogador, this.id_jogador2)){
+        if (!Objects.equals(id_jogador, this.id_jogador1) && !Objects.equals(id_jogador, this.id_jogador2)) {
             System.out.println("Esse jogador não pertence a partida");
             return false;
         }
 
         return true;
     }
+}
