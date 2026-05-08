@@ -81,6 +81,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
             return;
         }
 
+
         boolean acertou = resultado.equals("VITORIA");
         boolean derrota = resultado.equals("DERROTA");
         boolean empate  = resultado.equals("EMPATE");
@@ -100,6 +101,9 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
 
         responseObserver.onNext(builder.build());
         responseObserver.onCompleted();
+
+        int tentativasFeitas = 6 - partida.getTentativasRestantes(idJogador);
+        partidaManager.notificarTentativa(idPartida, tentativasFeitas);
 
         // Notifica oponente e limpa memória se partida finalizada
         if (acertou) {

@@ -51,6 +51,23 @@ public class PartidaManager {
         }
     }
 
+    public void notificarTentativa(String idPartida, int tentativasFeitas) {
+        List<StreamObserver<EventoPartida>> lista = observers.get(idPartida);
+        if (lista == null) return;
+
+        EventoPartida evento = EventoPartida.newBuilder()
+                .setOponenteChutou(tentativasFeitas)
+                .build();
+
+        for (StreamObserver<EventoPartida> obs : lista) {
+            try {
+                obs.onNext(evento);
+            } catch (Exception e) {
+                lista.remove(obs);
+            }
+        }
+    }
+
     public void removerPartida(String idPartida) {
         partidas.remove(idPartida);
         observers.remove(idPartida);
