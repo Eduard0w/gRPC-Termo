@@ -11,13 +11,20 @@ import br.com.ucsal.termo.grpc.EstadoPartidaResponse;
 import br.com.ucsal.termo.grpc.ResultadoCores;
 import br.com.ucsal.termo.grpc.LobbyRequest;
 import br.com.ucsal.termo.grpc.LobbyStatusResponse;
+import br.com.ucsal.termo.grpc.AssistirPartidaRequest;
+import br.com.ucsal.termo.grpc.EstadoPartidaEspectadorResponse;
+
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 import core.GameEngine;
 import core.Partida;
 import interceptor.AuthInterceptor;
 import io.grpc.Context;
+import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import manager.LobbyManager;
 import manager.PartidaManager;
@@ -27,6 +34,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
     private final GameEngine engine;
     private final LobbyManager lobbyManager;
     private final PartidaManager partidaManager;
+    private final Map<String, List<StreamObserver<EstadoPartidaEspectadorResponse>>> espectadoresPorPartida = new ConcurrentHashMap<>();
 
     public TermoServiceImpl() {
         this.engine = new GameEngine();
@@ -104,16 +112,19 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
 
         int tentativasFeitas = 6 - partida.getTentativasRestantes(idJogador);
         partidaManager.notificarTentativa(idPartida, tentativasFeitas);
+        notificarEspectadores(idPartida, partida);
 
         // Notifica oponente e limpa memória se partida finalizada
         if (acertou) {
             partidaManager.notificarOponentes(idPartida, true,
                     "Seu oponente adivinhou a palavra! Voce perdeu.");
             partidaManager.removerPartida(idPartida);
+            espectadoresPorPartida.remove(idPartida);
         } else if (empate) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Empate! A palavra era: " + partida.getPalavraSecreta());
             partidaManager.removerPartida(idPartida);
+            espectadoresPorPartida.remove(idPartida);
         } else if (derrota) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Seu oponente ficou sem tentativas! Continue jogando.");
@@ -181,8 +192,66 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
                 .build());
     }
 
+    @Override
+    public void assistirPartida(AssistirPartidaRequest request, StreamObserver<EstadoPartidaEspectadorResponse> responseObserver) {
+        String idPartida = request.getIdPartida();
+        Partida partida = partidaManager.buscarPartida(idPartida);
+
+        if (partida == null) {
+            responseObserver.onError(Status.NOT_FOUND.withDescription("Partida não encontrada").asRuntimeException());
+            return;
+        }
+
+        // Adiciona o espectador na lista de transmissão dessa partida
+        espectadoresPorPartida.computeIfAbsent(idPartida, k -> new ArrayList<>()).add(responseObserver);
+
+        // Envia o "Estado Inicial" imediatamente (para ele não ver a tela em branco)
+        responseObserver.onNext(montarRespostaEspectador(partida));
+    }
+
     private String gerarId() {
         return Long.toHexString(System.nanoTime()) +
                 Integer.toHexString((int) (Math.random() * 0xFFFF));
+    }
+
+    private EstadoPartidaEspectadorResponse montarRespostaEspectador(Partida partida) {
+        EstadoPartidaEspectadorResponse.Builder builder = EstadoPartidaEspectadorResponse.newBuilder()
+                .setIdPartida(partida.getId_jogador1()) // Ou partida.getIdPartida() se existir
+                .setTentativasRestantesJogador1(partida.getTentativasRestantes(partida.getId_jogador1()))
+                .setTentativasRestantesJogador2(partida.getTentativasRestantes(partida.getId_jogador2()))
+                .setFinalizada(partida.isFinalizada());
+
+        // Pega apenas as CORES (não os chutes) do Jogador 1
+        for (int[] linha : partida.getHistoricoCores(partida.getId_jogador1())) {
+            ResultadoCores.Builder coresBuilder = ResultadoCores.newBuilder();
+            for (int c : linha) coresBuilder.addCores(c);
+            builder.addHistoricoCoresJogador1(coresBuilder.build());
+        }
+
+        for (int[] linha : partida.getHistoricoCores(partida.getId_jogador2())) {
+            ResultadoCores.Builder coresBuilder = ResultadoCores.newBuilder();
+            for (int c : linha) coresBuilder.addCores(c);
+            builder.addHistoricoCoresJogador2(coresBuilder.build());
+        }
+
+        return builder.build();
+    }
+
+    private void notificarEspectadores(String idPartida, Partida partida) {
+        List<StreamObserver<EstadoPartidaEspectadorResponse>> observers = espectadoresPorPartida.get(idPartida);
+        if (observers != null) {
+            EstadoPartidaEspectadorResponse resposta = montarRespostaEspectador(partida);
+            for (StreamObserver<EstadoPartidaEspectadorResponse> obs : observers) {
+                try {
+                    obs.onNext(resposta);
+                    // Se o jogo acabou, fecha o canal do espectador também
+                    if (partida.isFinalizada()) {
+                        obs.onCompleted();
+                    }
+                } catch (Exception e) {
+                    observers.remove(obs); // Remove se o espectador fechou a aba
+                }
+            }
+        }
     }
 }

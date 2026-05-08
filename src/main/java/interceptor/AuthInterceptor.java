@@ -14,11 +14,12 @@ public class AuthInterceptor implements ServerInterceptor {
             ServerCallHandler<ReqT, RespT> next) {
         String token = headers.get(TOKEN_KEY);
 
-        if (token == null || token.isBlank()) {
-            call.close(io.grpc.Status.UNAUTHENTICATED
-                    .withDescription("Token ausente."), new Metadata());
-            return new ServerCall.Listener<>() {};
-        }
+//        Removemos para que o espectador consiga assistir a partida, pois ele não tem token
+//        if (token == null || token.isBlank()) {
+//            call.close(io.grpc.Status.UNAUTHENTICATED
+//                    .withDescription("Token ausente."), new Metadata());
+//            return new ServerCall.Listener<>() {};
+//        }
 
         Context ctx = Context.current().withValue(TOKEN_CONTEXT_KEY, token);
         return Contexts.interceptCall(ctx, call, headers, next);
