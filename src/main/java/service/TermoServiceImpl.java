@@ -12,12 +12,12 @@ import br.com.ucsal.termo.grpc.ResultadoCores;
 import br.com.ucsal.termo.grpc.LobbyRequest;
 import br.com.ucsal.termo.grpc.LobbyStatusResponse;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ConcurrentHashMap;
+
 
 import core.GameEngine;
 import core.Partida;
+import interceptor.AuthInterceptor;
+import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import manager.LobbyManager;
 import manager.PartidaManager;
@@ -48,6 +48,14 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         String idJogador = request.getIdJogador1();
         String palavraChutada = request.getPalavraChutada().toUpperCase();
 
+        String token = AuthInterceptor.TOKEN_CONTEXT_KEY.get(Context.current());
+        if (token == null || !token.equals(idJogador)) {
+            responseObserver.onError(io.grpc.Status.UNAUTHENTICATED
+                    .withDescription("Token invalido.")
+                    .asRuntimeException());
+            return;
+        }
+
         Partida partida = partidaManager.buscarPartida(idPartida);
         if (partida == null) {
             responseObserver.onError(io.grpc.Status.NOT_FOUND
@@ -56,6 +64,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
             return;
         }
 
+        // RF12 — valida se jogador pertence à partida
         if (!partida.pertenceAPartida(idJogador)) {
             responseObserver.onError(io.grpc.Status.PERMISSION_DENIED
                     .withDescription("Jogador nao pertence a esta partida.")
@@ -92,12 +101,15 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         responseObserver.onNext(builder.build());
         responseObserver.onCompleted();
 
+        // Notifica oponente e limpa memória se partida finalizada
         if (acertou) {
             partidaManager.notificarOponentes(idPartida, true,
                     "Seu oponente adivinhou a palavra! Voce perdeu.");
+            partidaManager.removerPartida(idPartida);
         } else if (empate) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Empate! A palavra era: " + partida.getPalavraSecreta());
+            partidaManager.removerPartida(idPartida);
         } else if (derrota) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Seu oponente ficou sem tentativas! Continue jogando.");
@@ -107,12 +119,14 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
     @Override
     public void monitorarPartida(PartidaRequest request, StreamObserver<EventoPartida> responseObserver) {
         String idPartida = request.getIdPartida();
+
         if (!partidaManager.existePartida(idPartida)) {
             responseObserver.onError(io.grpc.Status.NOT_FOUND
                     .withDescription("Partida nao encontrada: " + idPartida)
                     .asRuntimeException());
             return;
         }
+
         partidaManager.addObserver(idPartida, responseObserver);
     }
 
@@ -129,12 +143,18 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
             return;
         }
 
+        if (!partida.pertenceAPartida(idJogador)) {
+            responseObserver.onError(io.grpc.Status.PERMISSION_DENIED
+                    .withDescription("Jogador nao pertence a esta partida.")
+                    .asRuntimeException());
+            return;
+        }
+
         EstadoPartidaResponse.Builder builder = EstadoPartidaResponse.newBuilder()
                 .setTentativasRestantes(partida.getTentativasRestantes(idJogador))
                 .setFinalizada(partida.isFinalizada());
 
-        List<String> chutes = partida.getHistoricoChutes(idJogador);
-        builder.addAllHistoricoChutes(chutes);
+        builder.addAllHistoricoChutes(partida.getHistoricoChutes(idJogador));
 
         for (int[] linha : partida.getHistoricoCores(idJogador)) {
             ResultadoCores.Builder coresBuilder = ResultadoCores.newBuilder();

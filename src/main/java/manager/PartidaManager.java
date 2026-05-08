@@ -50,4 +50,9 @@ public class PartidaManager {
             }
         }
     }
+
+    public void removerPartida(String idPartida) {
+        partidas.remove(idPartida);
+        observers.remove(idPartida);
+    }
 }
