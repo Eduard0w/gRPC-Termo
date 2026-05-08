@@ -15,6 +15,10 @@ service Termo {
     rpc MonitorarPartida (PartidaRequest) returns (stream EventoPartida);
     // O "stream" nesse método avisa ao compilador que esse método não responde apenas uma vez, ou seja
     // fica aberto mandando dados continuamente
+
+    rpc BuscarEstadoPartida (PartidaRequest) returns (EstadoPartidaResponse);
+
+    rpc JogadoresDisponiveis (LobbyRequest) returns (stream LobbyStatusResponse);
 }
 
 
@@ -24,12 +28,21 @@ message JogadorRequest {
     string nome = 1;
 }
 
+message LobbyRequest {
+    bool lobby_ativo = 1;// sinaliza se o lobby está ativo, para saber a quantidade em espera
+}
 message LobbyResponse {
     string id_jogador1 = 1;
-    string id_partida = 2;
-    string nome_oponente = 3;
+    string nome_jogador1 = 2;
+    string id_partida = 3;
+    string nome_oponente = 4;
+    string id_oponente = 5;
     // Esse valores que são definifidos (1, 2, 3) são identificadores.
     // É usado para o gRPC saber quem é quem no outro lado
+}
+
+message LobbyStatusResponse {
+    int32 quantidade_jogadores = 1;
 }
 
 message TentativaRequest {
@@ -43,6 +56,7 @@ message TentativaResponse {
     repeated int32 cores = 1;   // Array de cores (Ex: 0=Cinza, 1=Amarelo, 2=Verde)
     bool acertou = 2;
     int32 tentativas_restantes = 3;
+    string palavra_secreta = 4;
 }
 
 
@@ -53,5 +67,21 @@ message PartidaRequest {
 
 message EventoPartida {
     bool oponente_ganhou = 1;
-    string mensagem = 2;
+    int32 oponente_chutou = 2; // vai ser retornar a quantidade de tentativas feitas
+    string mensagem = 3;
+}
+
+message EstadoPartidaResponse {
+    repeated string historico_chutes = 1;
+
+    // Retorna a lista de cores (cada chute gera um array de 5 ints)
+    repeated ResultadoCores historico_cores = 2;
+
+    int32 tentativas_restantes = 3;
+    bool finalizada = 4;
+    string palavra_secreta = 5; // Só preencher se finalizada = true
+}
+
+message ResultadoCores {
+    repeated int32 cores = 1;
 }
