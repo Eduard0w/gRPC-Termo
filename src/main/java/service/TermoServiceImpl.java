@@ -20,6 +20,7 @@ import interceptor.AuthInterceptor;
 import io.grpc.Context;
 import io.grpc.stub.StreamObserver;
 import manager.LobbyManager;
+import manager.OnlineManager;
 import manager.PartidaManager;
 
 public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
@@ -27,18 +28,23 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
     private final GameEngine engine;
     private final LobbyManager lobbyManager;
     private final PartidaManager partidaManager;
+    private final OnlineManager onlineManager;
 
     public TermoServiceImpl() {
         this.engine = new GameEngine();
         this.engine.pegarPalavrasDisponiveis();
         this.lobbyManager = new LobbyManager();
         this.partidaManager = new PartidaManager();
+        this.onlineManager = new OnlineManager();
     }
 
     @Override
     public void conectar(JogadorRequest request, StreamObserver<LobbyResponse> responseObserver) {
         String idJogador = gerarId();
         String nomeJogador = request.getNome();
+
+        onlineManager.jogadorConectou();
+
         lobbyManager.tentarParear(idJogador, nomeJogador, responseObserver, engine, partidaManager);
     }
 
@@ -48,6 +54,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         String idJogador = request.getIdJogador1();
         String palavraChutada = request.getPalavraChutada().toUpperCase();
 
+        // valida token
         String token = AuthInterceptor.TOKEN_CONTEXT_KEY.get(Context.current());
         if (token == null || !token.equals(idJogador)) {
             responseObserver.onError(io.grpc.Status.UNAUTHENTICATED
@@ -64,7 +71,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
             return;
         }
 
-        // RF12 — valida se jogador pertence à partida
+        // valida se jogador pertence à partida
         if (!partida.pertenceAPartida(idJogador)) {
             responseObserver.onError(io.grpc.Status.PERMISSION_DENIED
                     .withDescription("Jogador nao pertence a esta partida.")
@@ -80,7 +87,6 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
                     .asRuntimeException());
             return;
         }
-
 
         boolean acertou = resultado.equals("VITORIA");
         boolean derrota = resultado.equals("DERROTA");
@@ -102,18 +108,25 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         responseObserver.onNext(builder.build());
         responseObserver.onCompleted();
 
-        int tentativasFeitas = 6 - partida.getTentativasRestantes(idJogador);
-        partidaManager.notificarTentativa(idPartida, tentativasFeitas);
+        // Notifica tentativa ao vivo (só se o jogo continua)
+        if (!acertou && !empate) {
+            int tentativasFeitas = 6 - partida.getTentativasRestantes(idJogador);
+            partidaManager.notificarTentativa(idPartida, tentativasFeitas);
+        }
 
-        // Notifica oponente e limpa memória se partida finalizada
+        // Notifica fim de jogo e limpa memória
         if (acertou) {
             partidaManager.notificarOponentes(idPartida, true,
                     "Seu oponente adivinhou a palavra! Voce perdeu.");
             partidaManager.removerPartida(idPartida);
+            onlineManager.jogadorDesconectou();
+            onlineManager.jogadorDesconectou();
         } else if (empate) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Empate! A palavra era: " + partida.getPalavraSecreta());
             partidaManager.removerPartida(idPartida);
+            onlineManager.jogadorDesconectou();
+            onlineManager.jogadorDesconectou();
         } else if (derrota) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Seu oponente ficou sem tentativas! Continue jogando.");
@@ -176,9 +189,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
 
     @Override
     public void jogadoresDisponiveis(LobbyRequest request, StreamObserver<LobbyStatusResponse> responseObserver) {
-        responseObserver.onNext(LobbyStatusResponse.newBuilder()
-                .setQuantidadeJogadores(lobbyManager.quantidadeEsperando())
-                .build());
+        onlineManager.adicionarObserver(responseObserver);
     }
 
     private String gerarId() {
