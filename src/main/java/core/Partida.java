@@ -91,7 +91,11 @@ public class Partida {
         return Objects.equals(idJogador, id_jogador1) ? historicoCoresJ1 : historicoCoresJ2;
     }
 
-    public boolean PertenceAPartida(String id_jogador) {
+    public List<String> getHistoricoChutes(String idJogador) {
+        return Objects.equals(idJogador, id_jogador1) ? historicoChutesJ1 : historicoChutesJ2;
+    }
+
+    public boolean pertenceAPartida(String id_jogador) {
         return Objects.equals(id_jogador, id_jogador1) || Objects.equals(id_jogador, id_jogador2);
     }
 }

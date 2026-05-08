@@ -19,59 +19,27 @@ import java.util.concurrent.ConcurrentHashMap;
 import core.GameEngine;
 import core.Partida;
 import io.grpc.stub.StreamObserver;
+import manager.LobbyManager;
+import manager.PartidaManager;
 
 public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
-    private final GameEngine engine;
-    private final Map<String, Partida> partidas = new ConcurrentHashMap<>();
-    private final Map<String, List<StreamObserver<EventoPartida>>> observers = new ConcurrentHashMap<>();
-    private final Object lobbyLock = new Object();
 
-    private String jogadorEsperandoId = null;
-    private String jogadorEsperandoNome = null;
-    private StreamObserver<LobbyResponse> jogadorEsperandoObserver = null;
+    private final GameEngine engine;
+    private final LobbyManager lobbyManager;
+    private final PartidaManager partidaManager;
 
     public TermoServiceImpl() {
         this.engine = new GameEngine();
         this.engine.pegarPalavrasDisponiveis();
+        this.lobbyManager = new LobbyManager();
+        this.partidaManager = new PartidaManager();
     }
 
     @Override
     public void conectar(JogadorRequest request, StreamObserver<LobbyResponse> responseObserver) {
+        String idJogador = gerarId();
         String nomeJogador = request.getNome();
-
-        synchronized (lobbyLock) {
-            if (jogadorEsperandoId == null) {
-                jogadorEsperandoId = gerarId();
-                jogadorEsperandoNome = nomeJogador;
-                jogadorEsperandoObserver = responseObserver;
-            } else {
-                String idPartida = gerarId();
-                String idJogador1 = jogadorEsperandoId;
-                String idJogador2 = gerarId();
-
-                Partida novaPartida = new Partida(engine, idJogador1, idJogador2);
-                partidas.put(idPartida, novaPartida);
-                observers.put(idPartida, new CopyOnWriteArrayList<>());
-
-                jogadorEsperandoObserver.onNext(LobbyResponse.newBuilder()
-                        .setIdJogador1(idJogador1)
-                        .setIdPartida(idPartida)
-                        .setNomeOponente(nomeJogador)
-                        .build());
-                jogadorEsperandoObserver.onCompleted();
-
-                responseObserver.onNext(LobbyResponse.newBuilder()
-                        .setIdJogador1(idJogador2)
-                        .setIdPartida(idPartida)
-                        .setNomeOponente(jogadorEsperandoNome)
-                        .build());
-                responseObserver.onCompleted();
-
-                jogadorEsperandoId = null;
-                jogadorEsperandoNome = null;
-                jogadorEsperandoObserver = null;
-            }
-        }
+        lobbyManager.tentarParear(idJogador, nomeJogador, responseObserver, engine, partidaManager);
     }
 
     @Override
@@ -80,7 +48,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         String idJogador = request.getIdJogador1();
         String palavraChutada = request.getPalavraChutada().toUpperCase();
 
-        Partida partida = partidas.get(idPartida);
+        Partida partida = partidaManager.buscarPartida(idPartida);
         if (partida == null) {
             responseObserver.onError(io.grpc.Status.NOT_FOUND
                     .withDescription("Partida nao encontrada: " + idPartida)
@@ -88,11 +56,16 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
             return;
         }
 
-        // ✅ Passa o idJogador para controle individual de tentativas
+        if (!partida.pertenceAPartida(idJogador)) {
+            responseObserver.onError(io.grpc.Status.PERMISSION_DENIED
+                    .withDescription("Jogador nao pertence a esta partida.")
+                    .asRuntimeException());
+            return;
+        }
+
         String resultado = partida.jogada(idJogador, palavraChutada);
 
-        if (resultado.equals("Palavra inválida.") || resultado.equals("Jogo acabou!")
-                || resultado.equals("Jogador não pertence à partida.")) {
+        if (resultado.equals("Palavra inválida.") || resultado.equals("Jogo acabou!")) {
             responseObserver.onError(io.grpc.Status.INVALID_ARGUMENT
                     .withDescription(resultado)
                     .asRuntimeException());
@@ -101,7 +74,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
 
         boolean acertou = resultado.equals("VITORIA");
         boolean derrota = resultado.equals("DERROTA");
-        boolean empate = resultado.equals("EMPATE");
+        boolean empate  = resultado.equals("EMPATE");
 
         List<int[]> historico = partida.getHistoricoCores(idJogador);
         int[] cores = historico.get(historico.size() - 1);
@@ -120,24 +93,27 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         responseObserver.onCompleted();
 
         if (acertou) {
-            notificarOponentes(idPartida, true, "Seu oponente adivinhou a palavra! Voce perdeu.");
+            partidaManager.notificarOponentes(idPartida, true,
+                    "Seu oponente adivinhou a palavra! Voce perdeu.");
         } else if (empate) {
-            notificarOponentes(idPartida, false, "Empate! A palavra era: " + partida.getPalavraSecreta());
+            partidaManager.notificarOponentes(idPartida, false,
+                    "Empate! A palavra era: " + partida.getPalavraSecreta());
         } else if (derrota) {
-            notificarOponentes(idPartida, false, "Seu oponente ficou sem tentativas! Continue jogando.");
+            partidaManager.notificarOponentes(idPartida, false,
+                    "Seu oponente ficou sem tentativas! Continue jogando.");
         }
     }
 
     @Override
     public void monitorarPartida(PartidaRequest request, StreamObserver<EventoPartida> responseObserver) {
         String idPartida = request.getIdPartida();
-        if (!partidas.containsKey(idPartida)) {
+        if (!partidaManager.existePartida(idPartida)) {
             responseObserver.onError(io.grpc.Status.NOT_FOUND
                     .withDescription("Partida nao encontrada: " + idPartida)
                     .asRuntimeException());
             return;
         }
-        observers.get(idPartida).add(responseObserver);
+        partidaManager.addObserver(idPartida, responseObserver);
     }
 
     @Override
@@ -145,7 +121,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         String idPartida = request.getIdPartida();
         String idJogador = request.getIdJogador();
 
-        Partida partida = partidas.get(idPartida);
+        Partida partida = partidaManager.buscarPartida(idPartida);
         if (partida == null) {
             responseObserver.onError(io.grpc.Status.NOT_FOUND
                     .withDescription("Partida nao encontrada: " + idPartida)
@@ -157,17 +133,10 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
                 .setTentativasRestantes(partida.getTentativasRestantes(idJogador))
                 .setFinalizada(partida.isFinalizada());
 
-        // Histórico de chutes
-        List<String> chutes = partida.PertenceAPartida(idJogador)
-                ? (idJogador.equals(partida.getId_jogador1())
-                ? partida.getHistoricoChutesJ1()
-                : partida.getHistoricoChutesJ2())
-                : List.of();
+        List<String> chutes = partida.getHistoricoChutes(idJogador);
         builder.addAllHistoricoChutes(chutes);
 
-        // Histórico de cores
-        List<int[]> cores = partida.getHistoricoCores(idJogador);
-        for (int[] linha : cores) {
+        for (int[] linha : partida.getHistoricoCores(idJogador)) {
             ResultadoCores.Builder coresBuilder = ResultadoCores.newBuilder();
             for (int c : linha) coresBuilder.addCores(c);
             builder.addHistoricoCores(coresBuilder.build());
@@ -183,31 +152,9 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
 
     @Override
     public void jogadoresDisponiveis(LobbyRequest request, StreamObserver<LobbyStatusResponse> responseObserver) {
-        // Envia quantidade atual e mantém stream aberto (simplificado)
-        int quantidade = jogadorEsperandoId != null ? 1 : 0;
         responseObserver.onNext(LobbyStatusResponse.newBuilder()
-                .setQuantidadeJogadores(quantidade)
+                .setQuantidadeJogadores(lobbyManager.quantidadeEsperando())
                 .build());
-        // Stream fica aberto — seria atualizado via push quando o lobby mudar
-    }
-
-    private void notificarOponentes(String idPartida, boolean oponenteGanhou, String mensagem) {
-        List<StreamObserver<EventoPartida>> lista = observers.get(idPartida);
-        if (lista == null) return;
-
-        EventoPartida evento = EventoPartida.newBuilder()
-                .setOponenteGanhou(oponenteGanhou)
-                .setMensagem(mensagem)
-                .build();
-
-        for (StreamObserver<EventoPartida> obs : lista) {
-            try {
-                obs.onNext(evento);
-                obs.onCompleted();
-            } catch (Exception e) {
-                lista.remove(obs);
-            }
-        }
     }
 
     private String gerarId() {
