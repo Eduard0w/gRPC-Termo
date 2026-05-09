@@ -19,6 +19,8 @@ service Termo {
     rpc BuscarEstadoPartida (PartidaRequest) returns (EstadoPartidaResponse);
 
     rpc JogadoresDisponiveis (LobbyRequest) returns (stream LobbyStatusResponse);
+
+    rpc AssistirPartida (AssistirPartidaRequest) returns (stream EstadoPartidaEspectadorResponse);
 }
 
 
@@ -84,4 +86,17 @@ message EstadoPartidaResponse {
 
 message ResultadoCores {
     repeated int32 cores = 1;
+}
+
+message EstadoPartidaEspectadorResponse {
+    string id_partida = 1;
+    repeated ResultadoCores historico_cores_jogador1 = 2;
+    repeated ResultadoCores historico_cores_jogador2 = 3;
+    int32 tentativas_restantes_jogador1 = 4;
+    int32 tentativas_restantes_jogador2 = 5;
+    bool finalizada = 6;
+}
+
+message AssistirPartidaRequest {
+    string id_partida = 1;
 }
