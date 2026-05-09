@@ -26,6 +26,7 @@ import io.grpc.Context;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import manager.LobbyManager;
+import manager.OnlineManager;
 import manager.PartidaManager;
 
 public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
@@ -34,18 +35,23 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
     private final LobbyManager lobbyManager;
     private final PartidaManager partidaManager;
     private final Map<String, List<StreamObserver<EstadoPartidaEspectadorResponse>>> espectadoresPorPartida = new ConcurrentHashMap<>();
+    private final OnlineManager onlineManager;
 
     public TermoServiceImpl() {
         this.engine = new GameEngine();
         this.engine.pegarPalavrasDisponiveis();
         this.lobbyManager = new LobbyManager();
         this.partidaManager = new PartidaManager();
+        this.onlineManager = new OnlineManager();
     }
 
     @Override
     public void conectar(JogadorRequest request, StreamObserver<LobbyResponse> responseObserver) {
         String idJogador = gerarId();
         String nomeJogador = request.getNome();
+
+        onlineManager.jogadorConectou();
+
         lobbyManager.tentarParear(idJogador, nomeJogador, responseObserver, engine, partidaManager);
     }
 
@@ -119,16 +125,22 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         notificarEspectadores(idPartida, partida);
 
         // notifica oponente e limpa memória se partida finalizada
+
+        // Notifica fim de jogo e limpa memória
         if (acertou) {
             partidaManager.notificarOponentes(idPartida, true,
                     "Seu oponente adivinhou a palavra! Voce perdeu.");
             partidaManager.removerPartida(idPartida);
             espectadoresPorPartida.remove(idPartida);
+            onlineManager.jogadorDesconectou();
+            onlineManager.jogadorDesconectou();
         } else if (empate) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Empate! A palavra era: " + partida.getPalavraSecreta());
             partidaManager.removerPartida(idPartida);
             espectadoresPorPartida.remove(idPartida);
+            onlineManager.jogadorDesconectou();
+            onlineManager.jogadorDesconectou();
         } else if (derrota) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Seu oponente ficou sem tentativas! Continue jogando.");
@@ -191,9 +203,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
 
     @Override
     public void jogadoresDisponiveis(LobbyRequest request, StreamObserver<LobbyStatusResponse> responseObserver) {
-        responseObserver.onNext(LobbyStatusResponse.newBuilder()
-                .setQuantidadeJogadores(lobbyManager.quantidadeEsperando())
-                .build());
+        onlineManager.adicionarObserver(responseObserver);
     }
 
     @Override

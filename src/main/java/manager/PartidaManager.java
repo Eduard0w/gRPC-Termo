@@ -29,7 +29,7 @@ public class PartidaManager {
 
     public void addObserver(String idPartida, StreamObserver<EventoPartida> observer){
         List<StreamObserver<EventoPartida>> lista = observers.get(idPartida);
-        if(lista == null) lista.add(observer);
+        if(lista != null) lista.add(observer);
     }
 
     public void notificarOponentes(String idPartida, boolean oponenteGanhou, String mensagem){
