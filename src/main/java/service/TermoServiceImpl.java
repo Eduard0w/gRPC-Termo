@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-
 import core.GameEngine;
 import core.Partida;
 import interceptor.AuthInterceptor;
@@ -56,9 +55,10 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         String idJogador = request.getIdJogador1();
         String palavraChutada = request.getPalavraChutada().toUpperCase();
 
+        // valida token
         String token = AuthInterceptor.TOKEN_CONTEXT_KEY.get(Context.current());
         if (token == null || !token.equals(idJogador)) {
-            responseObserver.onError(io.grpc.Status.UNAUTHENTICATED
+            responseObserver.onError(Status.UNAUTHENTICATED
                     .withDescription("Token invalido.")
                     .asRuntimeException());
             return;
@@ -66,15 +66,15 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
 
         Partida partida = partidaManager.buscarPartida(idPartida);
         if (partida == null) {
-            responseObserver.onError(io.grpc.Status.NOT_FOUND
+            responseObserver.onError(Status.NOT_FOUND
                     .withDescription("Partida nao encontrada: " + idPartida)
                     .asRuntimeException());
             return;
         }
 
-        // RF12 — valida se jogador pertence à partida
+        // valida se jogador pertence à partida
         if (!partida.pertenceAPartida(idJogador)) {
-            responseObserver.onError(io.grpc.Status.PERMISSION_DENIED
+            responseObserver.onError(Status.PERMISSION_DENIED
                     .withDescription("Jogador nao pertence a esta partida.")
                     .asRuntimeException());
             return;
@@ -83,12 +83,11 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         String resultado = partida.jogada(idJogador, palavraChutada);
 
         if (resultado.equals("Palavra inválida.") || resultado.equals("Jogo acabou!")) {
-            responseObserver.onError(io.grpc.Status.INVALID_ARGUMENT
+            responseObserver.onError(Status.INVALID_ARGUMENT
                     .withDescription(resultado)
                     .asRuntimeException());
             return;
         }
-
 
         boolean acertou = resultado.equals("VITORIA");
         boolean derrota = resultado.equals("DERROTA");
@@ -110,11 +109,16 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         responseObserver.onNext(builder.build());
         responseObserver.onCompleted();
 
-        int tentativasFeitas = 6 - partida.getTentativasRestantes(idJogador);
-        partidaManager.notificarTentativa(idPartida, tentativasFeitas);
+        // notifica tentativa ao vivo apenas se o jogo continua
+        if (!acertou && !empate) {
+            int tentativasFeitas = 6 - partida.getTentativasRestantes(idJogador);
+            partidaManager.notificarTentativa(idPartida, tentativasFeitas);
+        }
+
+        // espectadores sempre recebem atualização
         notificarEspectadores(idPartida, partida);
 
-        // Notifica oponente e limpa memória se partida finalizada
+        // notifica oponente e limpa memória se partida finalizada
         if (acertou) {
             partidaManager.notificarOponentes(idPartida, true,
                     "Seu oponente adivinhou a palavra! Voce perdeu.");
@@ -136,7 +140,7 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         String idPartida = request.getIdPartida();
 
         if (!partidaManager.existePartida(idPartida)) {
-            responseObserver.onError(io.grpc.Status.NOT_FOUND
+            responseObserver.onError(Status.NOT_FOUND
                     .withDescription("Partida nao encontrada: " + idPartida)
                     .asRuntimeException());
             return;
@@ -152,14 +156,14 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
 
         Partida partida = partidaManager.buscarPartida(idPartida);
         if (partida == null) {
-            responseObserver.onError(io.grpc.Status.NOT_FOUND
+            responseObserver.onError(Status.NOT_FOUND
                     .withDescription("Partida nao encontrada: " + idPartida)
                     .asRuntimeException());
             return;
         }
 
         if (!partida.pertenceAPartida(idJogador)) {
-            responseObserver.onError(io.grpc.Status.PERMISSION_DENIED
+            responseObserver.onError(Status.PERMISSION_DENIED
                     .withDescription("Jogador nao pertence a esta partida.")
                     .asRuntimeException());
             return;
@@ -198,30 +202,27 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         Partida partida = partidaManager.buscarPartida(idPartida);
 
         if (partida == null) {
-            responseObserver.onError(Status.NOT_FOUND.withDescription("Partida não encontrada").asRuntimeException());
+            responseObserver.onError(Status.NOT_FOUND
+                    .withDescription("Partida não encontrada.")
+                    .asRuntimeException());
             return;
         }
 
-        // Adiciona o espectador na lista de transmissão dessa partida
+        // adiciona espectador na lista
         espectadoresPorPartida.computeIfAbsent(idPartida, k -> new ArrayList<>()).add(responseObserver);
 
-        // Envia o "Estado Inicial" imediatamente (para ele não ver a tela em branco)
-        responseObserver.onNext(montarRespostaEspectador(partida));
+        // envia estado inicial imediatamente com idPartida correto
+        responseObserver.onNext(montarRespostaEspectador(idPartida, partida));
     }
 
-    private String gerarId() {
-        return Long.toHexString(System.nanoTime()) +
-                Integer.toHexString((int) (Math.random() * 0xFFFF));
-    }
-
-    private EstadoPartidaEspectadorResponse montarRespostaEspectador(Partida partida) {
+    // recebe idPartida como parâmetro
+    private EstadoPartidaEspectadorResponse montarRespostaEspectador(String idPartida, Partida partida) {
         EstadoPartidaEspectadorResponse.Builder builder = EstadoPartidaEspectadorResponse.newBuilder()
-                .setIdPartida(partida.getId_jogador1()) // Ou partida.getIdPartida() se existir
+                .setIdPartida(idPartida)
                 .setTentativasRestantesJogador1(partida.getTentativasRestantes(partida.getId_jogador1()))
                 .setTentativasRestantesJogador2(partida.getTentativasRestantes(partida.getId_jogador2()))
                 .setFinalizada(partida.isFinalizada());
 
-        // Pega apenas as CORES (não os chutes) do Jogador 1
         for (int[] linha : partida.getHistoricoCores(partida.getId_jogador1())) {
             ResultadoCores.Builder coresBuilder = ResultadoCores.newBuilder();
             for (int c : linha) coresBuilder.addCores(c);
@@ -239,19 +240,23 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
 
     private void notificarEspectadores(String idPartida, Partida partida) {
         List<StreamObserver<EstadoPartidaEspectadorResponse>> observers = espectadoresPorPartida.get(idPartida);
-        if (observers != null) {
-            EstadoPartidaEspectadorResponse resposta = montarRespostaEspectador(partida);
-            for (StreamObserver<EstadoPartidaEspectadorResponse> obs : observers) {
-                try {
-                    obs.onNext(resposta);
-                    // Se o jogo acabou, fecha o canal do espectador também
-                    if (partida.isFinalizada()) {
-                        obs.onCompleted();
-                    }
-                } catch (Exception e) {
-                    observers.remove(obs); // Remove se o espectador fechou a aba
+        if (observers == null) return;
+
+        EstadoPartidaEspectadorResponse resposta = montarRespostaEspectador(idPartida, partida);
+        for (StreamObserver<EstadoPartidaEspectadorResponse> obs : observers) {
+            try {
+                obs.onNext(resposta);
+                if (partida.isFinalizada()) {
+                    obs.onCompleted();
                 }
+            } catch (Exception e) {
+                observers.remove(obs);
             }
         }
+    }
+
+    private String gerarId() {
+        return Long.toHexString(System.nanoTime()) +
+                Integer.toHexString((int) (Math.random() * 0xFFFF));
     }
 }
