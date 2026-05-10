@@ -95,6 +95,7 @@ message EstadoPartidaEspectadorResponse {
     int32 tentativas_restantes_jogador1 = 4;
     int32 tentativas_restantes_jogador2 = 5;
     bool finalizada = 6;
+    string palavra_secreta = 7;
 }
 
 message AssistirPartidaRequest {

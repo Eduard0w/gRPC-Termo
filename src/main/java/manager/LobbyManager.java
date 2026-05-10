@@ -5,11 +5,6 @@ import core.Partida;
 import br.com.ucsal.termo.grpc.LobbyResponse;
 import io.grpc.stub.StreamObserver;
 
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-
 public class LobbyManager {
     private final Object lobbyLock = new Object();
 
@@ -44,15 +39,19 @@ public class LobbyManager {
 
                 jogadorEsperandoObserver.onNext(LobbyResponse.newBuilder()
                         .setIdJogador1(idJogador1)
+                        .setNomeJogador1(jogadorEsperandoNome)
                         .setIdPartida(idPartida)
                         .setNomeOponente(nomeJogador)
+                        .setIdOponente(idJogador2)
                         .build());
                 jogadorEsperandoObserver.onCompleted();
 
                 responseObserver.onNext(LobbyResponse.newBuilder()
                         .setIdJogador1(idJogador2)
+                        .setNomeJogador1(nomeJogador)
                         .setIdPartida(idPartida)
                         .setNomeOponente(jogadorEsperandoNome)
+                        .setIdOponente(idJogador1)
                         .build());
                 responseObserver.onCompleted();
 
@@ -73,6 +72,19 @@ public class LobbyManager {
     public int quantidadeEsperando() {
         synchronized (lobbyLock) {
             return jogadorEsperandoId != null ? 1 : 0;
+        }
+    }
+
+    public boolean removerDaFila(String idJogador) {
+        synchronized (lobbyLock) {
+            if (jogadorEsperandoId == null || !jogadorEsperandoId.equals(idJogador)) {
+                return false;
+            }
+
+            jogadorEsperandoId = null;
+            jogadorEsperandoNome = null;
+            jogadorEsperandoObserver = null;
+            return true;
         }
     }
 }
