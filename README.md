@@ -1,1 +1,1 @@
-# RMI-Termo
+# RPC-Termo
