@@ -1,1 +1,1 @@
-# RPC-Termo
+# gRPC-Termo
