@@ -14,16 +14,17 @@ import br.com.ucsal.termo.grpc.LobbyStatusResponse;
 import br.com.ucsal.termo.grpc.AssistirPartidaRequest;
 import br.com.ucsal.termo.grpc.EstadoPartidaEspectadorResponse;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import core.GameEngine;
 import core.Partida;
 import interceptor.AuthInterceptor;
 import io.grpc.Context;
 import io.grpc.Status;
+import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import manager.LobbyManager;
 import manager.OnlineManager;
@@ -50,7 +51,11 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         String idJogador = gerarId();
         String nomeJogador = request.getNome();
 
-        onlineManager.jogadorConectou();
+        if (responseObserver instanceof ServerCallStreamObserver) {
+            ServerCallStreamObserver<LobbyResponse> serverObserver =
+                    (ServerCallStreamObserver<LobbyResponse>) responseObserver;
+            serverObserver.setOnCancelHandler(() -> lobbyManager.removerDaFila(idJogador));
+        }
 
         lobbyManager.tentarParear(idJogador, nomeJogador, responseObserver, engine, partidaManager);
     }
@@ -132,15 +137,11 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
                     "Seu oponente adivinhou a palavra! Voce perdeu.");
             partidaManager.removerPartida(idPartida);
             espectadoresPorPartida.remove(idPartida);
-            onlineManager.jogadorDesconectou();
-            onlineManager.jogadorDesconectou();
         } else if (empate) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Empate! A palavra era: " + partida.getPalavraSecreta());
             partidaManager.removerPartida(idPartida);
             espectadoresPorPartida.remove(idPartida);
-            onlineManager.jogadorDesconectou();
-            onlineManager.jogadorDesconectou();
         } else if (derrota) {
             partidaManager.notificarOponentes(idPartida, false,
                     "Seu oponente ficou sem tentativas! Continue jogando.");
@@ -156,6 +157,21 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
                     .withDescription("Partida nao encontrada: " + idPartida)
                     .asRuntimeException());
             return;
+        }
+
+        // Detecta abandono no meio da partida: se o cliente fecha a aba e a partida
+        // ainda existe, encerra dando vitoria ao oponente e limpa os recursos.
+        if (responseObserver instanceof ServerCallStreamObserver) {
+            ServerCallStreamObserver<EventoPartida> serverObserver =
+                    (ServerCallStreamObserver<EventoPartida>) responseObserver;
+            serverObserver.setOnCancelHandler(() -> {
+                if (partidaManager.existePartida(idPartida)) {
+                    partidaManager.notificarOponentes(idPartida, true,
+                            "Seu oponente desconectou. Voce venceu.");
+                    partidaManager.removerPartida(idPartida);
+                    espectadoresPorPartida.remove(idPartida);
+                }
+            });
         }
 
         partidaManager.addObserver(idPartida, responseObserver);
@@ -219,7 +235,15 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
         }
 
         // adiciona espectador na lista
-        espectadoresPorPartida.computeIfAbsent(idPartida, k -> new ArrayList<>()).add(responseObserver);
+        List<StreamObserver<EstadoPartidaEspectadorResponse>> observers =
+                espectadoresPorPartida.computeIfAbsent(idPartida, k -> new CopyOnWriteArrayList<>());
+        observers.add(responseObserver);
+
+        if (responseObserver instanceof ServerCallStreamObserver) {
+            ServerCallStreamObserver<EstadoPartidaEspectadorResponse> serverObserver =
+                    (ServerCallStreamObserver<EstadoPartidaEspectadorResponse>) responseObserver;
+            serverObserver.setOnCancelHandler(() -> observers.remove(responseObserver));
+        }
 
         // envia estado inicial imediatamente com idPartida correto
         responseObserver.onNext(montarRespostaEspectador(idPartida, partida));
@@ -232,6 +256,10 @@ public class TermoServiceImpl extends TermoGrpc.TermoImplBase {
                 .setTentativasRestantesJogador1(partida.getTentativasRestantes(partida.getId_jogador1()))
                 .setTentativasRestantesJogador2(partida.getTentativasRestantes(partida.getId_jogador2()))
                 .setFinalizada(partida.isFinalizada());
+
+        if (partida.isFinalizada()) {
+            builder.setPalavraSecreta(partida.getPalavraSecreta());
+        }
 
         for (int[] linha : partida.getHistoricoCores(partida.getId_jogador1())) {
             ResultadoCores.Builder coresBuilder = ResultadoCores.newBuilder();
